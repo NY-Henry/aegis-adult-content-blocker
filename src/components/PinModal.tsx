@@ -1,0 +1,170 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Lock, X } from "lucide-react";
+
+interface PinModalProps {
+  isOpen: boolean;
+  title: string;
+  subtitle?: string;
+  isNewPin?: boolean;
+  onConfirm: (pin: string, newPin?: string) => Promise<void>;
+  onClose: () => void;
+}
+
+export const PinModal: React.FC<PinModalProps> = ({
+  isOpen,
+  title,
+  subtitle,
+  isNewPin = false,
+  onConfirm,
+  onClose,
+}) => {
+  const [pin, setPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const pinInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPin("");
+      setNewPin("");
+      setConfirmPin("");
+      setError(null);
+      setTimeout(() => pinInputRef.current?.focus(), 100);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (isNewPin) {
+      if (newPin.length < 4) {
+        setError("New PIN must be at least 4 digits");
+        return;
+      }
+      if (newPin !== confirmPin) {
+        setError("New PIN and confirmation do not match");
+        return;
+      }
+    } else {
+      if (!pin.trim()) {
+        setError("Please enter your PIN");
+        return;
+      }
+    }
+
+    try {
+      setLoading(true);
+      if (isNewPin) {
+        await onConfirm(pin, newPin);
+      } else {
+        await onConfirm(pin);
+      }
+      onClose();
+    } catch (err: any) {
+      setError(typeof err === "string" ? err : err?.message || "Operation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-container">
+        <div className="modal-header">
+          <div className="modal-title-row">
+            <div className="modal-icon-badge">
+              <Lock size={18} />
+            </div>
+            <h3>{title}</h3>
+          </div>
+          <button className="btn-close-modal" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="modal-body">
+          {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+
+          {error && <div className="modal-error-box">{error}</div>}
+
+          {isNewPin ? (
+            <div className="pin-inputs-grid">
+              <div className="input-group">
+                <label>Current PIN (if set)</label>
+                <input
+                  ref={pinInputRef}
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Leave blank if no PIN"
+                  className="text-input"
+                />
+              </div>
+
+              <div className="input-group">
+                <label>New PIN (min 4 digits)</label>
+                <input
+                  type="password"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value)}
+                  placeholder="••••"
+                  className="text-input"
+                  required
+                />
+              </div>
+
+              <div className="input-group">
+                <label>Confirm New PIN</label>
+                <input
+                  type="password"
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value)}
+                  placeholder="••••"
+                  className="text-input"
+                  required
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="input-group single-pin">
+              <label>Enter Security PIN</label>
+              <input
+                ref={pinInputRef}
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="••••"
+                className="text-input pin-big"
+                autoFocus
+                required
+              />
+            </div>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onClose}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? "Verifying..." : "Confirm"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
