@@ -1,248 +1,45 @@
-import React, { useState } from "react";
-import {
-  Shield,
-  Lock,
-  Globe,
-  Clock,
-  RotateCcw,
-  CheckCircle2,
-} from "lucide-react";
-import { AppStatusResponse, DnsProvider, UpdateSettingsPayload } from "../types";
-
-interface SettingsProps {
-  status: AppStatusResponse;
-  onUpdateSettings: (payload: UpdateSettingsPayload) => Promise<void>;
-  onOpenSetPin: () => void;
-  onRemovePin: () => Promise<void>;
-  onResetStats: () => Promise<void>;
+import { useEffect, useState } from "react";
+import { Check, Play as Youtube, Save, Shield } from "lucide-react";
+import { AppStatusResponse, UpdateSettingsPayload } from "../types";
+import { errorMessage } from "../utils";
+interface Props {
+  onDirtyChange: (dirty: boolean) => void;
+  status: AppStatusResponse; onUpdateSettings: (payload: UpdateSettingsPayload) => Promise<void>;
+  onOpenSetPin: () => void; onRemovePin: () => Promise<void>; onResetStats: () => Promise<void>;
 }
-
-export const Settings: React.FC<SettingsProps> = ({
-  status,
-  onUpdateSettings,
-  onOpenSetPin,
-  onRemovePin,
-  onResetStats,
-}) => {
-  const [dnsProvider, setDnsProvider] = useState<DnsProvider>(status.dns_provider);
-  const [dnsEnabled, setDnsEnabled] = useState(status.dns_blocking_enabled);
-  const [hostsEnabled, setHostsEnabled] = useState(status.hosts_blocking_enabled);
-  const [policiesEnabled, setPoliciesEnabled] = useState(status.browser_policies_enabled);
-  const [watchdogEnabled, setWatchdogEnabled] = useState(status.watchdog_enabled);
-  const [unlockDelay, setUnlockDelay] = useState(status.unlock_delay_minutes);
-  const [savedMsg, setSavedMsg] = useState(false);
+const settingsFrom = (status: AppStatusResponse): UpdateSettingsPayload => ({
+  dns_provider: "cloudflare", dns_blocking_enabled: status.dns_blocking_enabled, hosts_blocking_enabled: status.hosts_blocking_enabled,
+  browser_policies_enabled: status.browser_policies_enabled, watchdog_enabled: status.watchdog_enabled, unlock_delay_minutes: status.unlock_delay_minutes,
+});
+export function Settings({ status, onUpdateSettings, onOpenSetPin, onRemovePin, onResetStats, onDirtyChange }: Props) {
+  const [draft, setDraft] = useState(() => settingsFrom(status));
   const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      await onUpdateSettings({
-        dns_provider: dnsProvider,
-        dns_blocking_enabled: dnsEnabled,
-        hosts_blocking_enabled: hostsEnabled,
-        browser_policies_enabled: policiesEnabled,
-        watchdog_enabled: watchdogEnabled,
-        unlock_delay_minutes: unlockDelay,
-      });
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 3000);
-    } catch (err: any) {
-      alert(typeof err === "string" ? err : err?.message || "Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(settingsFrom(status));
+  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
+  const save = async () => {
+    setSaving(true); setMessage(null);
+    try { await onUpdateSettings(draft); setMessage({ text: "Settings saved.", error: false }); }
+    catch (error) { if (errorMessage(error) !== "Action cancelled.") setMessage({ text: errorMessage(error), error: true }); }
+    finally { setSaving(false); }
   };
-
-  return (
-    <div className="settings-container">
-      {savedMsg && (
-        <div className="success-toast">
-          <CheckCircle2 size={18} />
-          <span>Settings applied and saved successfully!</span>
-        </div>
-      )}
-
-      <div className="settings-section-card">
-        <div className="settings-card-header">
-          <Globe size={20} />
-          <div>
-            <h4>DNS Protection Provider</h4>
-            <p>Select which family-safe resolver encrypts and filters domain requests system-wide.</p>
-          </div>
-        </div>
-
-        <div className="dns-options-grid">
-          <label className={`dns-option-card ${dnsProvider === "cloudflare" ? "selected" : ""}`}>
-            <input
-              type="radio"
-              name="dns_provider"
-              value="cloudflare"
-              checked={dnsProvider === "cloudflare"}
-              onChange={() => setDnsProvider("cloudflare")}
-            />
-            <div className="dns-option-body">
-              <strong>Cloudflare Family (1.1.1.3)</strong>
-              <span>Fastest resolution. Blocks malware, phishing, and adult content automatically.</span>
-            </div>
-          </label>
-
-          <label className={`dns-option-card ${dnsProvider === "clean_browsing" ? "selected" : ""}`}>
-            <input
-              type="radio"
-              name="dns_provider"
-              value="clean_browsing"
-              checked={dnsProvider === "clean_browsing"}
-              onChange={() => setDnsProvider("clean_browsing")}
-            />
-            <div className="dns-option-body">
-              <strong>CleanBrowsing Family</strong>
-              <span>Strict content filtering with SafeSearch enforcement baked into DNS.</span>
-            </div>
-          </label>
-
-          <label className={`dns-option-card ${dnsProvider === "ad_guard" ? "selected" : ""}`}>
-            <input
-              type="radio"
-              name="dns_provider"
-              value="ad_guard"
-              checked={dnsProvider === "ad_guard"}
-              onChange={() => setDnsProvider("ad_guard")}
-            />
-            <div className="dns-option-body">
-              <strong>AdGuard Family Protection</strong>
-              <span>Blocks adult websites, malicious domains, and common tracking trackers.</span>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-section-card">
-        <div className="settings-card-header">
-          <Clock size={20} />
-          <div>
-            <h4>Unlock Delay Cooldown (Anti-Relapse Friction)</h4>
-            <p>
-              When you attempt to disable protection, you must wait this cooldown period before the toggle activates.
-            </p>
-          </div>
-        </div>
-
-        <div className="setting-control-row">
-          <label className="setting-label">Cooldown Waiting Period:</label>
-          <select
-            value={unlockDelay}
-            onChange={(e) => setUnlockDelay(Number(e.target.value))}
-            className="select-input"
-          >
-            <option value={0}>Instant (No delay)</option>
-            <option value={5}>5 Minutes</option>
-            <option value={15}>15 Minutes (Recommended)</option>
-            <option value={30}>30 Minutes</option>
-            <option value={60}>1 Hour</option>
-            <option value={1440}>24 Hours (Extreme Lockdown)</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="settings-section-card">
-        <div className="settings-card-header">
-          <Shield size={20} />
-          <div>
-            <h4>Individual Defense Layer Toggles</h4>
-            <p>Customize which protection layers are active when Aegis Shield is armed.</p>
-          </div>
-        </div>
-
-        <div className="toggle-list">
-          <label className="toggle-item">
-            <div className="toggle-info">
-              <strong>Network Family DNS Resolver</strong>
-              <span>Overrides network adapter DNS servers with family filtering.</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={dnsEnabled}
-              onChange={(e) => setDnsEnabled(e.target.checked)}
-              className="toggle-checkbox"
-            />
-          </label>
-
-          <label className="toggle-item">
-            <div className="toggle-info">
-              <strong>Hosts File Domain Sinkhole & SafeSearch VIPs</strong>
-              <span>Redirects adult domains and search engines to 0.0.0.0 and strict VIPs.</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={hostsEnabled}
-              onChange={(e) => setHostsEnabled(e.target.checked)}
-              className="toggle-checkbox"
-            />
-          </label>
-
-          <label className="toggle-item">
-            <div className="toggle-info">
-              <strong>Browser Policies & Anti-DoH Lock</strong>
-              <span>Disables Incognito mode and prevents browsers from bypassing DNS.</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={policiesEnabled}
-              onChange={(e) => setPoliciesEnabled(e.target.checked)}
-              className="toggle-checkbox"
-            />
-          </label>
-
-          <label className="toggle-item">
-            <div className="toggle-info">
-              <strong>Real-Time Window Title Watchdog</strong>
-              <span>Actively inspects foreground window titles and closes trigger tabs.</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={watchdogEnabled}
-              onChange={(e) => setWatchdogEnabled(e.target.checked)}
-              className="toggle-checkbox"
-            />
-          </label>
-        </div>
-
-        <div className="settings-actions-footer">
-          <button
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "Saving Changes..." : "Save Protection Settings"}
-          </button>
-        </div>
-      </div>
-
-      {/* Security PIN & Stats Management */}
-      <div className="settings-section-card">
-        <div className="settings-card-header">
-          <Lock size={20} />
-          <div>
-            <h4>Security & PIN Protection</h4>
-            <p>Require a master PIN before changing settings or disabling the shield.</p>
-          </div>
-        </div>
-
-        <div className="pin-management-actions">
-          <button className="btn-secondary" onClick={onOpenSetPin}>
-            {status.has_pin ? "Change Master PIN" : "Set Master Security PIN"}
-          </button>
-          {status.has_pin && (
-            <button className="btn-danger-outline" onClick={onRemovePin}>
-              Remove PIN Protection
-            </button>
-          )}
-          <button className="btn-secondary" onClick={onResetStats}>
-            <RotateCcw size={15} />
-            <span>Reset Blocked Counter</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+  const controls = [
+    { key: "dns_blocking_enabled", name: "Adult content DNS", description: "Use Cloudflare's adult-domain filter. YouTube-restricting family resolvers are excluded." },
+    { key: "hosts_blocking_enabled", name: "Blocked sites and SafeSearch", description: "Block listed domains and enable search engine SafeSearch. YouTube domains are always excluded." },
+    { key: "browser_policies_enabled", name: "Browser protection", description: "Disable private browsing and DNS bypass. No forced YouTube Restricted Mode." },
+    { key: "watchdog_enabled", name: "Window monitoring", description: "Optional: closes whole windows when their titles match a keyword. Identifiable YouTube windows are excluded." },
+  ] as const;
+  return <div className="settings-container">
+    {message && <div className={"notice " + (message.error ? "error-notice" : "success-notice")} role={message.error ? "alert" : "status"}><span>{message.text}</span></div>}
+    <section className="panel"><div className="panel-heading"><div><h2>Protection preferences</h2><p>Choose the layers that run when protection is enabled.</p></div><Shield size={18} /></div><div className="settings-body">
+      {controls.map(({ key, name, description }) => <label className="setting-row" key={key}><div className="setting-copy"><strong>{name}</strong><p>{description}</p></div><input className="switch" type="checkbox" role="switch" aria-label={name} checked={draft[key]} disabled={saving} onChange={event => { setDraft({ ...draft, [key]: event.target.checked }); setMessage(null); }} /></label>)}
+      <p className="helper-text">DNS provider: Cloudflare adult content filter · 1.1.1.3 / 1.0.0.3. Existing restrictive family-provider choices are migrated automatically.</p>
+    </div></section>
+    <section className="panel"><div className="panel-heading"><div><h2>Pausing protection</h2><p>A waiting period gives you time to reconsider a pause.</p></div></div><div className="settings-body"><div className="setting-row"><div className="setting-copy"><strong>Pause delay</strong><p>The timer starts only after you request a pause.</p></div><select className="select-input" aria-label="Pause delay" value={draft.unlock_delay_minutes} disabled={saving} onChange={event => { setDraft({ ...draft, unlock_delay_minutes: Number(event.target.value) }); setMessage(null); }}>
+      {[0, 5, 15, 30, 60, 1440].map(minutes => <option key={minutes} value={minutes}>{minutes === 0 ? "No delay" : minutes === 60 ? "1 hour" : minutes === 1440 ? "24 hours" : minutes + " minutes"}</option>)}
+    </select></div></div></section>
+    <section className="panel"><div className="panel-heading"><div><h2>Security PIN</h2><p>A PIN protects settings and pause requests.</p></div><span className={"badge " + (status.has_pin ? "success" : "neutral")}>{status.has_pin ? "PIN set" : "Not set"}</span></div><div className="settings-body"><div className="setting-row"><div className="action-group"><button className="btn-secondary" onClick={onOpenSetPin} disabled={saving}>{status.has_pin ? "Change PIN" : "Set a PIN"}</button>{status.has_pin && <button className="btn-danger-outline" onClick={() => { void onRemovePin().catch(error => setMessage({ text: errorMessage(error), error: true })); }} disabled={saving}>Remove PIN</button>}</div><button className="text-button" onClick={() => { void onResetStats().catch(error => { if (errorMessage(error) !== "Action cancelled.") setMessage({ text: errorMessage(error), error: true }); }); }} disabled={saving}>Reset blocked counter</button></div></div></section>
+    <div className="youtube-banner"><Youtube size={22} /><div><h3>YouTube is excluded from Aegis protection rules.</h3><p>Old Aegis hosts redirects are cleaned up on an administrator launch. If an existing browser policy is detected, use Restore YouTube above. Other network or account restrictions may still apply.</p></div><span className={"badge " + (status.youtube_policy_restricted ? "warning" : "neutral")}><Check size={11} />{status.youtube_policy_restricted ? "Needs repair" : "Preserved"}</span></div>
+    {dirty && <div className="settings-save-bar" role="status"><span>Unsaved changes</span><div className="action-group"><button className="btn-secondary" disabled={saving} onClick={() => setDraft(settingsFrom(status))}>Discard</button><button className="btn-primary" onClick={() => { void save(); }} disabled={saving}><Save size={14} />{saving ? "Saving..." : "Save changes"}</button></div></div>}
+  </div>;
+}

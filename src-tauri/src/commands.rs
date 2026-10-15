@@ -1,6 +1,3 @@
-use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
-use tauri::State;
 use crate::core::config::{AppConfig, DnsProvider};
 use crate::core::security::{CooldownStatus, SecurityManager};
 use crate::core::state::AppState;
@@ -8,9 +5,14 @@ use crate::engine::dns::DnsManager;
 use crate::engine::elevation::{is_elevated, relaunch_as_admin};
 use crate::engine::hosts::HostsManager;
 use crate::engine::policies::PolicyManager;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::Ordering;
+use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppStatusResponse {
+    pub youtube_policy_restricted: Option<bool>,
+    pub setup_error: Option<String>,
     pub shield_enabled: bool,
     pub is_admin: bool,
     pub dns_blocking_enabled: bool,
@@ -44,7 +46,7 @@ pub struct SyncResult {
     pub timestamp: i64,
 }
 
-fn enforce_protection_rules(config: &AppConfig) -> Result<(), String> {
+pub(crate) fn enforce_protection_rules(config: &mut AppConfig) -> Result<(), String> {
     if !is_elevated() {
         return Ok(()); // Non-admin cannot apply system level changes directly
     }
@@ -52,33 +54,50 @@ fn enforce_protection_rules(config: &AppConfig) -> Result<(), String> {
     if config.shield_enabled {
         // Apply DNS
         if config.dns_blocking_enabled {
-            let _ = DnsManager::apply_dns(&config.dns_provider);
+            DnsManager::apply_dns(&config.dns_provider)?;
         } else {
-            let _ = DnsManager::reset_dns();
+            DnsManager::reset_dns()?;
         }
 
         // Apply Hosts
         if config.hosts_blocking_enabled {
-            let count = HostsManager::apply_hosts_blocklist(&config.custom_blocked_domains, None)?;
-            // count is applied
-            let _ = count;
+            config.active_blocklist_count = HostsManager::apply_hosts_blocklist(
+                &config.custom_blocked_domains,
+                Some(&config.downloaded_blocked_domains),
+            )?;
         } else {
-            let _ = HostsManager::remove_hosts_blocklist();
+            HostsManager::remove_hosts_blocklist()?;
+            config.active_blocklist_count = 0;
         }
 
         // Apply Policies
         if config.browser_policies_enabled {
-            let _ = PolicyManager::apply_policies();
+            PolicyManager::apply_policies()?;
         } else {
-            let _ = PolicyManager::remove_policies();
+            PolicyManager::remove_policies()?;
         }
     } else {
         // Disable all
-        let _ = DnsManager::reset_dns();
-        let _ = HostsManager::remove_hosts_blocklist();
-        let _ = PolicyManager::remove_policies();
+        DnsManager::reset_dns()?;
+        HostsManager::remove_hosts_blocklist()?;
+        PolicyManager::remove_policies()?;
+        config.active_blocklist_count = 0;
     }
 
+    Ok(())
+}
+
+fn commit_config(current: &mut AppConfig, mut next: AppConfig) -> Result<(), String> {
+    if let Err(error) = enforce_protection_rules(&mut next).and_then(|_| next.save()) {
+        let mut previous = current.clone();
+        return match enforce_protection_rules(&mut previous) {
+            Ok(()) => Err(error),
+            Err(rollback) => Err(format!(
+                "{error}. Previous protection could not be restored: {rollback}"
+            )),
+        };
+    }
+    *current = next;
     Ok(())
 }
 
@@ -89,6 +108,8 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<AppStatusResponse,
     let blocks = state.block_counter.load(Ordering::SeqCst);
 
     Ok(AppStatusResponse {
+        setup_error: state.setup_error.read().await.clone(),
+        youtube_policy_restricted: PolicyManager::youtube_policy_restricted().ok(),
         shield_enabled: cfg.shield_enabled,
         is_admin: state.is_admin,
         dns_blocking_enabled: cfg.dns_blocking_enabled,
@@ -108,7 +129,10 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<AppStatusResponse,
 }
 
 #[tauri::command]
-pub async fn toggle_shield(pin: Option<String>, state: State<'_, AppState>) -> Result<AppStatusResponse, String> {
+pub async fn toggle_shield(
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AppStatusResponse, String> {
     let mut cfg = state.config.write().await;
 
     // Verify PIN if set
@@ -122,12 +146,14 @@ pub async fn toggle_shield(pin: Option<String>, state: State<'_, AppState>) -> R
     // If turning OFF and cooldown is configured, verify cooldown has expired
     if cfg.shield_enabled && cfg.unlock_delay_minutes > 0 {
         match SecurityManager::get_cooldown_status(&cfg) {
-            CooldownStatus::Unlocked => {
-                // Cooldown elapsed, allow toggle off
-                cfg.unlock_requested_at = None;
-            }
-            CooldownStatus::Waiting { seconds_remaining, .. } => {
-                return Err(format!("Shield is locked. Please wait {} seconds cooldown.", seconds_remaining));
+            CooldownStatus::Unlocked => {}
+            CooldownStatus::Waiting {
+                seconds_remaining, ..
+            } => {
+                return Err(format!(
+                    "Shield is locked. Please wait {} seconds cooldown.",
+                    seconds_remaining
+                ));
             }
             _ => {
                 return Err("Unlock cooldown required before turning off the shield.".into());
@@ -135,14 +161,18 @@ pub async fn toggle_shield(pin: Option<String>, state: State<'_, AppState>) -> R
         }
     }
 
-    cfg.shield_enabled = !cfg.shield_enabled;
-    enforce_protection_rules(&cfg)?;
-    cfg.save()?;
+    let mut next = cfg.clone();
+    next.shield_enabled = !next.shield_enabled;
+    next.unlock_requested_at = None;
+    commit_config(&mut cfg, next)?;
+    *state.setup_error.write().await = None;
 
     let cooldown = SecurityManager::get_cooldown_status(&cfg);
     let blocks = state.block_counter.load(Ordering::SeqCst);
 
     Ok(AppStatusResponse {
+        setup_error: state.setup_error.read().await.clone(),
+        youtube_policy_restricted: PolicyManager::youtube_policy_restricted().ok(),
         shield_enabled: cfg.shield_enabled,
         is_admin: state.is_admin,
         dns_blocking_enabled: cfg.dns_blocking_enabled,
@@ -162,7 +192,10 @@ pub async fn toggle_shield(pin: Option<String>, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
-pub async fn request_unlock(pin: Option<String>, state: State<'_, AppState>) -> Result<CooldownStatus, String> {
+pub async fn request_unlock(
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CooldownStatus, String> {
     let mut cfg = state.config.write().await;
 
     if cfg.pin_hash.is_some() {
@@ -188,7 +221,11 @@ pub async fn cancel_unlock(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn set_pin(current_pin: Option<String>, new_pin: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn set_pin(
+    current_pin: Option<String>,
+    new_pin: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     if new_pin.trim().len() < 4 {
         return Err("PIN must be at least 4 characters long".into());
     }
@@ -242,20 +279,25 @@ pub async fn update_settings(
         }
     }
 
-    cfg.dns_blocking_enabled = settings.dns_blocking_enabled;
-    cfg.dns_provider = settings.dns_provider;
-    cfg.hosts_blocking_enabled = settings.hosts_blocking_enabled;
-    cfg.browser_policies_enabled = settings.browser_policies_enabled;
-    cfg.watchdog_enabled = settings.watchdog_enabled;
-    cfg.unlock_delay_minutes = settings.unlock_delay_minutes;
-
-    enforce_protection_rules(&cfg)?;
-    cfg.save()?;
+    if settings.unlock_delay_minutes > 1440 {
+        return Err("Pause delay must be at most 24 hours.".into());
+    }
+    let mut next = cfg.clone();
+    next.dns_blocking_enabled = settings.dns_blocking_enabled;
+    next.dns_provider = DnsProvider::Cloudflare;
+    next.hosts_blocking_enabled = settings.hosts_blocking_enabled;
+    next.browser_policies_enabled = settings.browser_policies_enabled;
+    next.watchdog_enabled = settings.watchdog_enabled;
+    next.unlock_delay_minutes = settings.unlock_delay_minutes;
+    commit_config(&mut cfg, next)?;
+    *state.setup_error.write().await = None;
 
     let cooldown = SecurityManager::get_cooldown_status(&cfg);
     let blocks = state.block_counter.load(Ordering::SeqCst);
 
     Ok(AppStatusResponse {
+        setup_error: state.setup_error.read().await.clone(),
+        youtube_policy_restricted: PolicyManager::youtube_policy_restricted().ok(),
         shield_enabled: cfg.shield_enabled,
         is_admin: state.is_admin,
         dns_blocking_enabled: cfg.dns_blocking_enabled,
@@ -275,10 +317,14 @@ pub async fn update_settings(
 }
 
 #[tauri::command]
-pub async fn add_blocked_domain(domain: String, pin: Option<String>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let clean = domain.trim().to_lowercase();
-    if clean.is_empty() {
-        return Err("Domain cannot be empty".into());
+pub async fn add_blocked_domain(
+    domain: String,
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let clean = crate::engine::domains::normalize_domain(&domain)?;
+    if crate::engine::domains::is_youtube_domain(&clean) {
+        return Err("YouTube and its media domains are excluded from blocking.".into());
     }
 
     let mut cfg = state.config.write().await;
@@ -290,16 +336,20 @@ pub async fn add_blocked_domain(domain: String, pin: Option<String>, state: Stat
     }
 
     if !cfg.custom_blocked_domains.contains(&clean) {
-        cfg.custom_blocked_domains.push(clean);
-        enforce_protection_rules(&cfg)?;
-        cfg.save()?;
+        let mut next = cfg.clone();
+        next.custom_blocked_domains.push(clean);
+        commit_config(&mut cfg, next)?;
     }
 
     Ok(cfg.custom_blocked_domains.clone())
 }
 
 #[tauri::command]
-pub async fn remove_blocked_domain(domain: String, pin: Option<String>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn remove_blocked_domain(
+    domain: String,
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
     let clean = domain.trim().to_lowercase();
     let mut cfg = state.config.write().await;
 
@@ -310,15 +360,19 @@ pub async fn remove_blocked_domain(domain: String, pin: Option<String>, state: S
         }
     }
 
-    cfg.custom_blocked_domains.retain(|d| d != &clean);
-    enforce_protection_rules(&cfg)?;
-    cfg.save()?;
+    let mut next = cfg.clone();
+    next.custom_blocked_domains.retain(|d| d != &clean);
+    commit_config(&mut cfg, next)?;
 
     Ok(cfg.custom_blocked_domains.clone())
 }
 
 #[tauri::command]
-pub async fn add_blocked_keyword(keyword: String, pin: Option<String>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn add_blocked_keyword(
+    keyword: String,
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
     let clean = keyword.trim().to_lowercase();
     if clean.is_empty() {
         return Err("Keyword cannot be empty".into());
@@ -341,7 +395,11 @@ pub async fn add_blocked_keyword(keyword: String, pin: Option<String>, state: St
 }
 
 #[tauri::command]
-pub async fn remove_blocked_keyword(keyword: String, pin: Option<String>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn remove_blocked_keyword(
+    keyword: String,
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
     let clean = keyword.trim().to_lowercase();
     let mut cfg = state.config.write().await;
 
@@ -359,18 +417,36 @@ pub async fn remove_blocked_keyword(keyword: String, pin: Option<String>, state:
 }
 
 #[tauri::command]
-pub async fn sync_blocklist(state: State<'_, AppState>) -> Result<SyncResult, String> {
+pub async fn sync_blocklist(
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<SyncResult, String> {
+    {
+        let cfg = state.config.read().await;
+        if !state.is_admin || !cfg.shield_enabled || !cfg.hosts_blocking_enabled {
+            return Err("Sync requires administrator access and enabled site protection.".into());
+        }
+        if !SecurityManager::verify_pin(&pin.clone().unwrap_or_default(), &cfg) {
+            return Err("Invalid security PIN".into());
+        }
+    }
     let domains = HostsManager::fetch_stevenblack_adult_blocklist().await?;
     let mut cfg = state.config.write().await;
-    let applied_count = HostsManager::apply_hosts_blocklist(&cfg.custom_blocked_domains, Some(&domains))?;
+    if !state.is_admin || !cfg.shield_enabled || !cfg.hosts_blocking_enabled {
+        return Err("Protection changed during sync. Enable site protection and retry.".into());
+    }
+    if !SecurityManager::verify_pin(&pin.unwrap_or_default(), &cfg) {
+        return Err("Security PIN changed during sync. Please retry.".into());
+    }
 
     let now = chrono::Utc::now().timestamp();
-    cfg.last_sync_timestamp = Some(now);
-    cfg.active_blocklist_count = applied_count;
-    cfg.save()?;
+    let mut next = cfg.clone();
+    next.downloaded_blocked_domains = domains;
+    next.last_sync_timestamp = Some(now);
+    commit_config(&mut cfg, next)?;
 
     Ok(SyncResult {
-        total_domains: applied_count,
+        total_domains: cfg.active_blocklist_count,
         timestamp: now,
     })
 }
@@ -394,5 +470,31 @@ pub async fn reset_stats(pin: Option<String>, state: State<'_, AppState>) -> Res
     cfg.total_blocked_attempts = 0;
     cfg.save()?;
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn quit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.config.read().await.save()?;
+    crate::engine::watchdog::WatchdogSentinel::stop(state.watchdog_active.clone());
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_youtube(
+    pin: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if !state.is_admin {
+        return Err("Run as administrator to restore YouTube settings.".into());
+    }
+    let cfg = state.config.read().await;
+    if !SecurityManager::verify_pin(&pin.unwrap_or_default(), &cfg) {
+        return Err("Invalid security PIN".into());
+    }
+    PolicyManager::restore_youtube_policies()?;
+    HostsManager::remove_legacy_youtube_overrides()?;
+    DnsManager::flush_dns_cache()?;
     Ok(())
 }

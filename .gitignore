@@ -10,7 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+artifacts/
 *.local
+
+# Local secrets and fallback app data
+.env
+.env.*
+!.env.example
+/AegisGuard/
 
 # Editor directories and files
 .vscode/*

@@ -1,156 +1,168 @@
-# Aegis Guard 🛡️ — Adult Content Blocker & Anti-Relapse Focus Engine
+<div align="center">
 
-> **A production-grade, ultra-low RAM (< 5MB) system-wide adult content blocker, distraction sinkhole, and anti-relapse engine for Windows.**  
-> Built with **Tauri v2 (Rust + React / TypeScript)**.
+# Aegis Guard
 
-[![Platform - Windows](https://img.shields.io/badge/Platform-Windows_10%2F11-0078D6?logo=windows)](https://github.com/NY-Henry/aegis-adult-content-blocker)
-[![Rust](https://img.shields.io/badge/Backend-Rust-dea584?logo=rust)](https://www.rust-lang.org/)
-[![Tauri v2](https://img.shields.io/badge/Framework-Tauri_v2-24C8D8?logo=tauri)](https://tauri.app/)
-[![React](https://img.shields.io/badge/Frontend-React_19_+_TypeScript-61DAFB?logo=react)](https://react.dev/)
-[![License - MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![RAM Footprint](https://img.shields.io/badge/RAM_Usage-%3C_5_MB-success)](#-ultra-low-ram-architecture)
+**Build healthier browsing habits, one boundary at a time.**
 
----
+An open-source Windows app for blocking unwanted adult content and reducing digital distractions.
 
-## 📥 Quick Download & Installation
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8D8)
+![Rust + React](https://img.shields.io/badge/built_with-Rust_%2B_React-8B5CF6)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-### Option 1: One-Click Windows Installer (Recommended)
-1. Go to the [**Releases**](https://github.com/NY-Henry/aegis-adult-content-blocker/releases) page.
-2. Download **`Aegis Guard_1.0.0_x64-setup.exe`**.
-3. Run the installer and launch **Aegis Guard** from your Start menu or Desktop shortcut.
+[Get started](#getting-started) · [Features](#features) · [Screenshots](#screenshots) · [Contribute](CONTRIBUTING.md) · [Report a bug](https://github.com/NY-Henry/aegis-adult-content-blocker/issues/new/choose)
 
-### Option 2: Portable Executable (No Install Required)
-1. Download **`aegis-shield.exe`** from the [Releases](https://github.com/NY-Henry/aegis-adult-content-blocker/releases) page.
-2. Right-click $\rightarrow$ **"Run as administrator"**.
+</div>
 
----
+![Aegis Guard protection overview](docs/images/overview.png)
 
-## 📖 How to Use Aegis Guard (Step-by-Step)
+## Why Aegis Guard?
 
-### Step 1: Launch & Ensure Administrator Rights
-* Open **Aegis Guard**.
-* Look at the top right of the header. It should show a green badge: **`Admin Active`**.
-* *Note:* If running as a standard user, click the golden **"Elevate to Admin"** button to allow the app to configure network DNS and browser policies.
+Changing compulsive browsing habits can be difficult. Aegis Guard adds practical friction between an impulse and a website, with boundaries you choose, a pause delay, and clear controls. It is a tool to support your own goals and recovery efforts; it does not promise to treat addiction.
 
-### Step 2: Arm the Master Shield
-* On the **Protection Shield** tab, click **"Activate Protection"**.
-* The hero shield will turn **Green (Armed)** and all 4 defense layers will activate across your system.
+The dashboard runs locally in a Windows desktop app. YouTube domains are excluded from site rules, and Aegis does not enforce YouTube Restricted Mode.
 
-### Step 3: Set Your Security PIN & Anti-Relapse Cooldown
-* Switch to the **Settings & DNS** tab.
-* Under **Security & PIN Protection**, click **"Set Master Security PIN"** and enter a 4+ digit PIN.
-* Under **Unlock Delay Cooldown**, select your desired waiting period (e.g. **15 Minutes** or **1 Hour**).
-* **Why this works:** If you ever get an impulsive urge to disable protection, the app forces an unskippable countdown before the toggle activates, giving dopamine cravings time to subside.
+## Features
 
-### Step 4: Sync Extended Blocklists (Optional)
-* Go to the **Rules & Blocklists** tab.
-* Click **"Sync 100k+ Blocklist"** to download and sinkhole community-verified adult domains directly into your Windows `hosts` file.
-* You can also add custom domains or specific search keywords you want the sentinel to monitor.
+| Feature | What it does |
+| --- | --- |
+| Adult-content DNS | Uses Cloudflare's adult-content and malware filtering DNS. |
+| Site blocking | Applies built-in, custom, and downloaded domain rules through the Windows hosts file, with search-engine SafeSearch redirects. |
+| Community blocklist | Syncs up to 15,000 domain rules, excluding YouTube and its media domains. |
+| Browser protection | Applies supported browser policies to limit private browsing and DNS bypass. |
+| PIN and pause delay | Protects sensitive actions and gives you time to reconsider a pause. |
+| Optional window monitoring | Closes foreground windows whose titles match configured keywords. Off by default on new installations. |
+| System tray | Open the dashboard, request a pause, or quit the app from the tray. |
 
-### Step 5: Minimize to System Tray
-* Click the **'X'** button on the window. Aegis Guard will minimize quietly to your **Windows System Tray** (near the clock in the bottom-right corner) and guard your PC 24/7.
+## Screenshots
 
----
+<details>
+<summary><strong>Blocked sites and community rules</strong></summary>
 
-## ⚡ The 4 Defense Layers Explained
+![Manage blocked sites and keywords](docs/images/blocked-sites.png)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AEGIS GUARD DASHBOARD                    │
-│   (Cyber-Dark Glassmorphism UI, PIN Protection & Cooldown) │
-└───────────────┬─────────────────────────────┬───────────────┘
-                │                             │
-    ┌───────────▼──────────┐      ┌───────────▼──────────────┐
-    │   SYSTEM & NETWORK   │      │    BROWSER & RUNTIME     │
-    ├──────────────────────┤      ├──────────────────────────┤
-    │ 1. Family DNS Lock   │      │ 3. Browser Lockdown      │
-    │    (Cloudflare 1.1.1.3      │    (Disable Incognito,   │
-    │     / CleanBrowsing) │      │     Force SafeSearch,    │
-    │    → 0 MB Active RAM │      │     Disable DoH Bypass)  │
-    │                      │      │    → 0 MB Active RAM     │
-    │ 2. Hosts Sinkhole    │      │                          │
-    │    (15k+ adult       │      │ 4. Keyword Sentinel      │
-    │     domains -> 0.0.0.0      │    (Foreground Win32     │
-    │     + SafeSearch VIPs)      │     watchdog scanner)    │
-    │    → 0 MB Active RAM │      │    → ~3 MB RAM in tray   │
-    └──────────────────────┘      └──────────────────────────┘
-```
+</details>
 
-1. **Family DNS Resolver (Network Layer)**:
-   * System-wide DNS lock to **Cloudflare Family (`1.1.1.3`)**, **CleanBrowsing**, or **AdGuard Family**.
-   * Resolves adult domains to null at the network level before webpage requests are made.
-2. **Local Hosts Sinkhole & SafeSearch VIPs (System Layer)**:
-   * Kernel-level sinkhole mapping explicit domains to `0.0.0.0` in `C:\Windows\System32\drivers\etc\hosts`.
-   * Enforces strict **SafeSearch & YouTube Restricted Mode VIPs** for Google, Bing, DuckDuckGo, and YouTube.
-3. **Browser Policy Lockdown (Registry Layer)**:
-   * Disables **Incognito / InPrivate Browsing** on Chrome, Edge, Brave, and Firefox via Windows Registry (`HKLM\SOFTWARE\Policies`).
-   * Forces **Strict SafeSearch** and **Strict YouTube Mode** inside browser engines.
-   * **Disables DNS-over-HTTPS (DoH)** to prevent browsers from bypassing system DNS rules.
-4. **Real-time Window Sentinel (Watchdog Layer)**:
-   * Native Win32 background scanner inspecting active foreground window titles every 400ms.
-   * If explicit search keywords or trigger titles are detected, it immediately closes or minimizes the offending window.
+<details>
+<summary><strong>Protection settings and pause delay</strong></summary>
 
----
+![Configure protection layers](docs/images/settings.png)
 
-## 📊 Ultra-Low RAM Architecture
+</details>
 
-| Metric | Aegis Guard | Traditional Electron Blockers |
-| :--- | :--- | :--- |
-| **Idle RAM in Background (Tray)** | **~3 – 5 MB** | 150 – 300 MB |
-| **Idle CPU Usage** | **< 0.01%** | 1 – 5% |
-| **DNS & Kernel Filtering Overhead** | **0 MB** *(Handled by Windows kernel)* | N/A |
-| **Installer Size** | **~3.0 MB** | 85 – 140 MB |
+<details>
+<summary><strong>PIN-protected actions</strong></summary>
 
----
+![PIN confirmation dialog](docs/images/pin-request.png)
 
-## 🆘 Emergency System Reset Tool
+</details>
 
-You are always in full control of your machine. If you ever need to instantly revert all network settings and policies without opening the app:
+Screenshots show an example configuration. Available protections and counts depend on your settings.
 
-* Double-click [`Emergency-Reset.bat`](Emergency-Reset.bat).
-* It immediately reverts network DNS to DHCP, restores original hosts file, and removes browser policies.
+## Getting started
 
----
+### Build from source
 
-## 🛠️ Developer Setup & How to Contribute
+You need Windows, Node.js 22 LTS, Rust (MSVC toolchain), Microsoft C++ Build Tools, and WebView2. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 
-We welcome contributions from developers worldwide! Whether you want to add new blocklist sources, improve multi-language keyword detection, or build macOS/Linux support.
-
-### Prerequisites:
-* [Rust & Cargo](https://rustup.rs/) (1.75+)
-* [Node.js](https://nodejs.org/) (v18+)
-
-### Development Workflow:
-```bash
-# 1. Clone the repository
+```powershell
 git clone https://github.com/NY-Henry/aegis-adult-content-blocker.git
 cd aegis-adult-content-blocker
-
-# 2. Install frontend dependencies
-npm install
-
-# 3. Run development server (Open terminal as Administrator)
-npm run tauri dev
-
-# 4. Build standalone production bundles (.exe & .msi)
+npm ci
 npm run tauri build
 ```
 
-### Contribution Guidelines:
-1. **Fork** the repository.
-2. Create your Feature Branch: `git checkout -b feature/AmazingFeature`
-3. Commit your changes: `git commit -m 'Add AmazingFeature'`
-4. Push to the branch: `git push origin feature/AmazingFeature`
-5. Open a **Pull Request**.
+Windows installers are generated under `src-tauri/target/release/bundle/`. The standalone executable is generated under `src-tauri/target/release/`.
 
----
+For the repository's portable build helper, first fetch Rust dependencies, then build:
 
-## 📄 License
+```powershell
+cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1
+```
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+The helper builds offline from the fetched dependencies, verifies production mode and embedded dashboard assets, and writes `artifacts/Aegis-Guard-Fixed.exe`. It uses a faster, unoptimized build of the application crate; use `npm run tauri build` for a normal release build. `Launch-AegisGuard.bat` prefers this verified portable executable when present.
 
----
+### Set up your boundaries
 
-<p align="center">
-  Built with focus, resilience, and privacy in mind. 🛡️
-</p>
+1. Run Aegis Guard as administrator to apply DNS, hosts, and browser protection. The dashboard remains accessible without elevation.
+2. Choose protection layers in **Settings**. Configure your PIN and pause delay.
+3. Add sites in **Blocked sites**, or sync the community blocklist.
+4. Check **Overview** for protection status and any setup errors.
+
+An administrator launch can apply enabled protections immediately. Use a personal machine where you control network and browser settings.
+
+### Pause or quit
+
+**Request pause** in Overview starts your configured delay. Once it finishes, you have five minutes to confirm the pause. PIN checks apply when configured.
+
+Closing the window keeps Aegis in the system tray. Right-click its tray icon for **Open dashboard**, **Pause protection...**, or **Quit app (keep site blocking)**. The dashboard also has a Quit control.
+
+**Quitting stops the app and window monitoring; existing DNS, hosts, and browser settings remain applied.** Pause protection before quitting if you also want those blocking settings removed. If tray creation fails, closing the window exits normally.
+
+### YouTube compatibility
+
+Aegis excludes YouTube, its video-delivery, thumbnail, and embedded-player domains from built-in, custom, and downloaded hosts rules. It does not write Chrome or Edge's enforced YouTube Restricted Mode policy. Older CleanBrowsing Family and AdGuard Family choices migrate to Cloudflare's adult-domain filter.
+
+On an administrator launch, Aegis removes legacy YouTube redirects only inside its own marked hosts section. Older versions did not record browser-policy ownership, so an existing YouTube policy is detected without automatically deleting it. **Restore YouTube** offers an explicit, administrator- and PIN-gated repair. Restart browsers afterward. Network, account, or organization restrictions can still apply independently.
+
+### Know the limits
+
+- Window monitoring matches titles, can close an entire browser window, and cannot reliably identify website origins. Identifiable YouTube windows are excluded. Prefer domain blocking for routine protection.
+- DNS and browser protections change Windows settings. DNS reset returns active hardware adapters to automatic DNS; it does not restore a previous custom DNS configuration.
+- A local administrator, VPN, or another network configuration may bypass blocking. The app supports voluntary boundaries rather than tamper-proof enforcement.
+- Configuration, custom rules, and PIN verification data are stored locally under `%APPDATA%\AegisGuard\config.json`. DNS filtering sends DNS queries to Cloudflare; blocklist sync downloads third-party lists.
+
+## Development
+
+```powershell
+npm ci
+npm run tauri dev
+```
+
+Development launches the real protection engine and can change system settings when elevated. `npm run dev` alone serves the frontend and does not provide the native desktop backend.
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | React dashboard, settings, and dialogs |
+| `src-tauri/src/core/` | Configuration, PIN checks, and shared state |
+| `src-tauri/src/engine/` | DNS, hosts, browser policies, and window monitoring |
+| `src-tauri/src/commands.rs` | Native commands exposed to the dashboard |
+| `scripts/` | Portable build helper |
+| `tests/` | Isolated browser fixture and smoke tests |
+
+### Verification
+
+```powershell
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml --lib --features custom-protocol --locked -- --include-ignored
+```
+
+Build the frontend first: the native packaging regression test checks that its dashboard assets are embedded. Native tests cover domain validation, YouTube exclusions, hosts migration, configuration compatibility, and cooldown behavior without applying Windows protection.
+
+For isolated interface checks:
+
+```powershell
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+node tests/ui-smoke.mjs
+```
+
+The test-only native fixture does not change Windows settings. It covers navigation, settings, PIN retry and cancellation, pause requests, YouTube repair, and responsive layout. Screenshots and generated test builds go into the ignored `artifacts/` directory. To reuse a temporary Playwright installation, pass its `index.mjs` path as the first argument; set `AEGIS_BROWSER_PATH` to reuse a Chromium executable.
+
+Direct Cargo release builds require `--features custom-protocol`. A release guard rejects development-mode packaging. The executable's `--verify-bundle` option verifies embedded assets without starting protection, which helps catch builds that incorrectly try to connect to a localhost development server.
+
+## Contributing and support
+
+Bug reports, accessibility improvements, documentation, and carefully scoped fixes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Please keep conversations respectful and avoid sharing personal browsing histories, PINs, or configuration files in public issues.
+
+For vulnerabilities, follow [SECURITY.md](SECURITY.md).
+
+## Acknowledgments
+
+Built with Tauri, Rust, React, TypeScript, and Lucide icons. Community blocklist synchronization uses the [StevenBlack hosts project](https://github.com/StevenBlack/hosts); its sources and licensing are maintained upstream. DNS filtering is provided by Cloudflare.
+
+## License
+
+[MIT](LICENSE) - free to use, modify, and share.

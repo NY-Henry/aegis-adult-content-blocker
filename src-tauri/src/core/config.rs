@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DnsProvider {
-    Cloudflare,     // 1.1.1.3 (Malware + Adult Content)
+    Cloudflare,    // 1.1.1.3 (Malware + Adult Content)
     CleanBrowsing, // 185.228.168.168 (Family Filter)
     AdGuard,       // 94.140.14.15 (Family Protection)
 }
@@ -25,6 +25,8 @@ pub struct AppConfig {
     pub browser_policies_enabled: bool,
     pub watchdog_enabled: bool,
     pub custom_blocked_domains: Vec<String>,
+    #[serde(default)]
+    pub downloaded_blocked_domains: Vec<String>,
     pub blocked_keywords: Vec<String>,
     pub pin_hash: Option<String>,
     pub pin_salt: Option<String>,
@@ -44,7 +46,7 @@ impl Default for AppConfig {
             dns_provider: DnsProvider::Cloudflare,
             hosts_blocking_enabled: true,
             browser_policies_enabled: true,
-            watchdog_enabled: true,
+            watchdog_enabled: false,
             custom_blocked_domains: vec![
                 "pornhub.com".into(),
                 "xvideos.com".into(),
@@ -57,6 +59,7 @@ impl Default for AppConfig {
                 "stripchat.com".into(),
                 "livejasmin.com".into(),
             ],
+            downloaded_blocked_domains: Vec::new(),
             blocked_keywords: vec![
                 "pornhub".into(),
                 "xvideos".into(),
@@ -97,13 +100,29 @@ impl AppConfig {
     pub fn load() -> Self {
         let path = Self::config_path();
         if let Ok(data) = fs::read_to_string(&path) {
-            if let Ok(config) = serde_json::from_str::<AppConfig>(&data) {
+            if let Ok(mut config) = serde_json::from_str::<AppConfig>(&data) {
+                if config.migrate_youtube_compatibility() {
+                    let _ = config.save();
+                }
                 return config;
             }
         }
         let default_config = Self::default();
         let _ = default_config.save();
         default_config
+    }
+
+    pub fn migrate_youtube_compatibility(&mut self) -> bool {
+        let mut changed = self.dns_provider != DnsProvider::Cloudflare;
+        self.dns_provider = DnsProvider::Cloudflare;
+        let old = self.custom_blocked_domains.len();
+        self.custom_blocked_domains.retain(|domain| {
+            crate::engine::domains::normalize_domain(domain)
+                .map(|domain| !crate::engine::domains::is_youtube_domain(&domain))
+                .unwrap_or(true)
+        });
+        changed |= old != self.custom_blocked_domains.len();
+        changed
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -113,13 +132,40 @@ impl AppConfig {
         }
         let serialized = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
-        fs::write(&path, serialized)
-            .map_err(|e| format!("Failed to write config file: {}", e))?;
+        fs::write(&path, serialized).map_err(|e| format!("Failed to write config file: {}", e))?;
         Ok(())
     }
 }
 
 // Fallback for dirs if dirs_next is not used:
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn migration_preserves_preferences_and_removes_only_youtube_custom_rules() {
+        let mut config = AppConfig::default();
+        config.dns_provider = DnsProvider::CleanBrowsing;
+        config.custom_blocked_domains = vec!["HTTPS://WWW.YouTube.com/watch".into(), "example.com".into()];
+        config.watchdog_enabled = true;
+        config.pin_hash = Some("existing-pin-hash".into());
+        assert!(config.migrate_youtube_compatibility());
+        assert_eq!(config.dns_provider, DnsProvider::Cloudflare);
+        assert_eq!(config.custom_blocked_domains, vec!["example.com"]);
+        assert!(config.watchdog_enabled);
+        assert_eq!(config.pin_hash.as_deref(), Some("existing-pin-hash"));
+        assert!(!config.migrate_youtube_compatibility());
+    }
+
+    #[test]
+    fn existing_configs_without_a_downloaded_list_remain_readable() {
+        let mut value = serde_json::to_value(AppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("downloaded_blocked_domains");
+        let config: AppConfig = serde_json::from_value(value).unwrap();
+        assert!(config.downloaded_blocked_domains.is_empty());
+    }
+}
+
 mod dirs_next {
     use std::path::PathBuf;
     pub fn data_dir() -> Option<PathBuf> {

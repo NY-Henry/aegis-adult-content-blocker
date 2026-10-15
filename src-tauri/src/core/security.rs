@@ -1,18 +1,64 @@
-use rand::Rng;
-use sha2::{Digest, Sha256};
-use serde::{Deserialize, Serialize};
 use crate::core::config::AppConfig;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum CooldownStatus {
+    NotRequested,
     NoCooldownRequired,
     Unlocked,
-    Waiting { seconds_remaining: i64, total_seconds: i64 },
+    Waiting {
+        seconds_remaining: i64,
+        total_seconds: i64,
+    },
     Expired,
 }
 
 pub struct SecurityManager;
+
+#[cfg(test)]
+mod cooldown_tests {
+    use super::*;
+
+    #[test]
+    fn cooldown_does_not_start_until_requested() {
+        let config = AppConfig::default();
+        assert!(config.unlock_requested_at.is_none());
+        assert!(!matches!(
+            SecurityManager::get_cooldown_status(&config),
+            CooldownStatus::Waiting { .. }
+        ));
+    }
+
+    #[test]
+    fn requested_cooldown_waits_then_has_a_limited_unlock_window() {
+        let mut config = AppConfig::default();
+        config.unlock_delay_minutes = 5;
+        let now = chrono::Utc::now().timestamp();
+        config.unlock_requested_at = Some(now);
+        assert!(matches!(
+            SecurityManager::get_cooldown_status(&config),
+            CooldownStatus::Waiting { .. }
+        ));
+        config.unlock_requested_at = Some(now - 301);
+        assert!(matches!(
+            SecurityManager::get_cooldown_status(&config),
+            CooldownStatus::Unlocked
+        ));
+        config.unlock_requested_at = Some(now - 601);
+        assert!(matches!(
+            SecurityManager::get_cooldown_status(&config),
+            CooldownStatus::Expired
+        ));
+        config.unlock_delay_minutes = 0;
+        assert!(matches!(
+            SecurityManager::get_cooldown_status(&config),
+            CooldownStatus::NoCooldownRequired
+        ));
+    }
+}
 
 impl SecurityManager {
     pub fn generate_salt() -> String {
@@ -46,10 +92,7 @@ impl SecurityManager {
         }
 
         match config.unlock_requested_at {
-            None => CooldownStatus::Waiting {
-                seconds_remaining: (config.unlock_delay_minutes as i64) * 60,
-                total_seconds: (config.unlock_delay_minutes as i64) * 60,
-            },
+            None => CooldownStatus::NotRequested,
             Some(requested_at) => {
                 let now = chrono::Utc::now().timestamp();
                 let required_delay = (config.unlock_delay_minutes as i64) * 60;

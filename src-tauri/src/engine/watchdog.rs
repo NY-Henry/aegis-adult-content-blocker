@@ -1,13 +1,30 @@
+use crate::core::config::AppConfig;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowTextW, PostMessageW, WM_CLOSE, SW_MINIMIZE, ShowWindow,
+    GetForegroundWindow, GetWindowTextW, PostMessageW, ShowWindow, SW_MINIMIZE, WM_CLOSE,
 };
-use crate::core::config::AppConfig;
 
 pub struct WatchdogSentinel;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn excludes_youtube_windows_without_exempting_lookalike_titles() {
+        assert!(WatchdogSentinel::is_youtube_title(
+            "adult video documentary - YouTube - Google Chrome"
+        ));
+        assert!(WatchdogSentinel::is_youtube_title(
+            "A song – YouTube Music — Microsoft Edge"
+        ));
+        assert!(!WatchdogSentinel::is_youtube_title(
+            "YouTube downloader - example.com - Chrome"
+        ));
+    }
+}
 
 impl WatchdogSentinel {
     pub fn start(
@@ -54,7 +71,10 @@ impl WatchdogSentinel {
                     let title = String::from_utf16_lossy(&buffer[..len as usize]).to_lowercase();
 
                     // Do not block our own app!
-                    if title.contains("aegis guard") || title.contains("site-blocker") {
+                    if title.contains("aegis guard")
+                        || title.contains("site-blocker")
+                        || Self::is_youtube_title(&title)
+                    {
                         continue;
                     }
 
@@ -95,5 +115,15 @@ impl WatchdogSentinel {
 
     pub fn stop(active_flag: Arc<AtomicBool>) {
         active_flag.store(false, Ordering::SeqCst);
+    }
+
+    pub fn is_youtube_title(title: &str) -> bool {
+        title
+            .to_lowercase()
+            .replace(" – ", " - ")
+            .replace(" — ", " - ")
+            .replace(" | ", " - ")
+            .split(" - ")
+            .any(|part| matches!(part.trim(), "youtube" | "youtube music"))
     }
 }

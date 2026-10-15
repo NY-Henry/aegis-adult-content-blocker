@@ -1,12 +1,15 @@
 export type DnsProvider = "cloudflare" | "clean_browsing" | "ad_guard";
 
 export type CooldownStatus =
+  | { status: "not_requested" }
   | { status: "no_cooldown_required" }
   | { status: "unlocked" }
   | { status: "waiting"; seconds_remaining: number; total_seconds: number }
   | { status: "expired" };
 
 export interface AppStatusResponse {
+  youtube_policy_restricted?: boolean | null;
+  setup_error?: string | null;
   shield_enabled: boolean;
   is_admin: boolean;
   dns_blocking_enabled: boolean;

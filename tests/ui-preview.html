@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Aegis Guard UI verification</title></head>
+<body><div id="root"></div><script>
+  // Test-only native boundary: this page never invokes Windows protection code.
+  const initial = {
+    setup_error: null, youtube_policy_restricted: false, shield_enabled: true, is_admin: true,
+    dns_blocking_enabled: true, dns_provider: "cloudflare", hosts_blocking_enabled: true,
+    browser_policies_enabled: true, watchdog_enabled: false, custom_blocked_domains: ["example.com", "blocked.example.com"],
+    blocked_keywords: ["example keyword"], has_pin: false, unlock_delay_minutes: 15,
+    cooldown_status: { status: "not_requested" }, total_blocked_attempts: 0,
+    last_sync_timestamp: null, active_blocklist_count: 152,
+  };
+  const state = structuredClone(initial); const calls = []; const callbacks = new Map(); let callbackId = 0;
+  const params = new URLSearchParams(location.search);
+  if (params.has("pin")) state.has_pin = true;
+  if (params.has("restricted")) state.youtube_policy_restricted = true;
+  if (params.has("unknown-policy")) state.youtube_policy_restricted = null;
+  if (params.has("nonadmin")) state.is_admin = false;
+  window.__qa = { state, calls, callbacks };
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+  window.__TAURI_INTERNALS__ = {
+    transformCallback(callback) { callbacks.set(++callbackId, callback); return callbackId; },
+    unregisterCallback(id) { callbacks.delete(id); },
+    async invoke(command, args = {}) {
+      calls.push({ command, args });
+      if (command === "get_status") { if (params.has("offline")) throw new Error("Native connection unavailable"); return structuredClone(state); }
+      if (command === "plugin:event|listen") return 1;
+      if (command === "plugin:event|unlisten") return;
+      if (state.has_pin && ["update_settings", "toggle_shield", "request_unlock", "restore_youtube", "sync_blocklist"].includes(command) && args.pin !== "1234") throw new Error("Invalid security PIN");
+      switch (command) {
+        case "update_settings": if (params.has("save-error")) throw new Error("Settings could not be applied"); if (params.has("slow-save")) await new Promise(resolve => setTimeout(resolve, 1500)); Object.assign(state, args.settings); return structuredClone(state);
+        case "request_unlock": state.cooldown_status = { status: "waiting", seconds_remaining: 900, total_seconds: 900 }; return state.cooldown_status;
+        case "cancel_unlock": state.cooldown_status = { status: "not_requested" }; return;
+        case "toggle_shield": state.shield_enabled = !state.shield_enabled; return structuredClone(state);
+        case "restore_youtube": state.youtube_policy_restricted = false; return;
+        case "quit_app": return;
+        case "add_blocked_domain": if (args.domain.includes("youtube")) throw new Error("YouTube and its media domains are excluded from blocking."); state.custom_blocked_domains.push(args.domain); return state.custom_blocked_domains;
+        case "remove_blocked_domain": state.custom_blocked_domains = state.custom_blocked_domains.filter(domain => domain !== args.domain); return state.custom_blocked_domains;
+        case "add_blocked_keyword": state.blocked_keywords.push(args.keyword); return state.blocked_keywords;
+        case "remove_blocked_keyword": state.blocked_keywords = state.blocked_keywords.filter(keyword => keyword !== args.keyword); return state.blocked_keywords;
+        case "sync_blocklist": return { total_domains: 15152, timestamp: Date.now() / 1000 };
+        case "reset_stats": state.total_blocked_attempts = 0; return;
+        default: throw new Error("Unexpected native command: " + command);
+      }
+    },
+  };
+</script><script type="module" src="/src/main.tsx"></script></body></html>

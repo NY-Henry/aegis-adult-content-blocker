@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Lock, X } from "lucide-react";
+import { useDialogFocus } from "../useDialogFocus";
 
 interface PinModalProps {
   isOpen: boolean;
@@ -24,6 +25,8 @@ export const PinModal: React.FC<PinModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const pinInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, isOpen, onClose, loading);
 
   useEffect(() => {
     if (isOpen) {
@@ -43,7 +46,7 @@ export const PinModal: React.FC<PinModalProps> = ({
 
     if (isNewPin) {
       if (newPin.length < 4) {
-        setError("New PIN must be at least 4 digits");
+        setError("New PIN must be at least 4 characters");
         return;
       }
       if (newPin !== confirmPin) {
@@ -74,15 +77,15 @@ export const PinModal: React.FC<PinModalProps> = ({
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-container">
+      <div ref={dialogRef} className="modal-container" role="dialog" aria-modal="true" aria-labelledby="pin-dialog-title">
         <div className="modal-header">
           <div className="modal-title-row">
             <div className="modal-icon-badge">
               <Lock size={18} />
             </div>
-            <h3>{title}</h3>
+            <h3 id="pin-dialog-title">{title}</h3>
           </div>
-          <button className="btn-close-modal" onClick={onClose}>
+          <button className="btn-close-modal" onClick={onClose} disabled={loading} aria-label="Close PIN dialog">
             <X size={18} />
           </button>
         </div>
@@ -95,9 +98,10 @@ export const PinModal: React.FC<PinModalProps> = ({
           {isNewPin ? (
             <div className="pin-inputs-grid">
               <div className="input-group">
-                <label>Current PIN (if set)</label>
+                <label htmlFor="current-pin">Current PIN (if set)</label>
                 <input
                   ref={pinInputRef}
+                  id="current-pin"
                   type="password"
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
@@ -107,9 +111,10 @@ export const PinModal: React.FC<PinModalProps> = ({
               </div>
 
               <div className="input-group">
-                <label>New PIN (min 4 digits)</label>
+                <label htmlFor="new-pin">New PIN (min 4 characters)</label>
                 <input
                   type="password"
+                  id="new-pin"
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value)}
                   placeholder="••••"
@@ -119,9 +124,10 @@ export const PinModal: React.FC<PinModalProps> = ({
               </div>
 
               <div className="input-group">
-                <label>Confirm New PIN</label>
+                <label htmlFor="confirm-pin">Confirm new PIN</label>
                 <input
                   type="password"
+                  id="confirm-pin"
                   value={confirmPin}
                   onChange={(e) => setConfirmPin(e.target.value)}
                   placeholder="••••"
@@ -132,9 +138,10 @@ export const PinModal: React.FC<PinModalProps> = ({
             </div>
           ) : (
             <div className="input-group single-pin">
-              <label>Enter Security PIN</label>
+              <label htmlFor="security-pin">Enter security PIN</label>
               <input
                 ref={pinInputRef}
+                id="security-pin"
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
